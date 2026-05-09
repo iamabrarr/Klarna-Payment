@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Klarna Payment</title>
+  <script src="https://x.klarnacdn.net/kp/lib/v1/api.js"></script>
+</head>
+
+<body>
+
+<h2>Complete Payment</h2>
+
+<div id="klarna-container"></div>
+
+<button onclick="pay()">Pay Now</button>
+
+<script>
+  function getToken() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("token");
+  }
+
+  const clientToken = getToken();
+
+  Klarna.Payments.init({
+    client_token: clientToken
+  });
+
+  Klarna.Payments.load({
+    container: "#klarna-container",
+    payment_method_category: "pay_over_time"
+  });
+
+  function pay() {
+    Klarna.Payments.authorize(
+      {
+        payment_method_category: "pay_over_time"
+      },
+      {},
+      function (res) {
+        if (res.approved) {
+          alert("Payment successful!");
+          window.location.href = "https://your-firebase-api.com/success?session=" + res.session_id;
+        } else {
+          alert("Payment failed or cancelled");
+        }
+      }
+    );
+  }
+</script>
+
+</body>
+</html>
