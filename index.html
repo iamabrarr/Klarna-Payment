@@ -356,13 +356,8 @@
       <div class="pay-actions">
         <div class="pay-with-klarna">
           <span class="pay-with-text">Pay with</span>
-          <img
-            class="klarna-logo-img"
-            src="https://upload.wikimedia.org/wikipedia/commons/9/9a/Klarna_Logo_black.svg"
-            alt="Klarna"
-            width="108"
-            height="24"
-          />
+          <img class="klarna-logo-img" src="https://upload.wikimedia.org/wikipedia/commons/9/9a/Klarna_Logo_black.svg"
+            alt="Klarna" width="108" height="24" />
         </div>
         <button type="button" class="btn-pay" id="pay-btn" onclick="pay()">Pay now</button>
       </div>
@@ -374,8 +369,14 @@
   <script>
     function getQueryParams() {
       const params = new URLSearchParams(window.location.search);
+      const orderID =
+        params.get("orderID") ||
+        params.get("orderId") ||
+        params.get("order") ||
+        "";
       return {
         token: params.get("token"),
+        orderID: orderID.trim(),
         productName:
           params.get("productName") ||
           params.get("product") ||
@@ -387,7 +388,12 @@
       };
     }
 
-    const { token: clientToken, productName, productImage } = getQueryParams();
+    const {
+      token: clientToken,
+      orderID,
+      productName,
+      productImage,
+    } = getQueryParams();
 
     const productNameEl = document.getElementById("product-name");
     const productImgEl = document.getElementById("product-image");
@@ -408,10 +414,16 @@
       };
     }
 
-    if (!clientToken) {
+    if (!clientToken || !orderID) {
       tokenWarning.style.display = "block";
-      tokenWarning.textContent =
-        "Missing payment session: add a ?token=… query parameter to this URL.";
+      const parts = [];
+      if (!clientToken) {
+        parts.push("add a ?token=… query parameter for the Klarna session");
+      }
+      if (!orderID) {
+        parts.push("add an ?orderID=… query parameter for your order");
+      }
+      tokenWarning.textContent = "Cannot checkout: " + parts.join(" and ") + ".";
       payBtn.disabled = true;
     } else {
       Klarna.Payments.init({
@@ -435,7 +447,10 @@
           if (res.approved) {
             alert("Payment successful!");
             window.location.href =
-              "https://your-firebase-api.com/success?session=" + res.session_id;
+              "https://coachifyy-2026.web.app/order=" +
+              encodeURIComponent(orderID) +
+              "/sessionid=" +
+              encodeURIComponent(res.session_id);
           } else {
             alert("Payment failed or cancelled");
           }
