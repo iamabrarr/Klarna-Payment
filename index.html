@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
- <script src="https://js.klarna.com/web-sdk/v1/klarna.js"></script>
+  <script src="https://js.klarna.com/web-sdk/v1/klarna.js"></script>
   <style>
     :root {
       --bg-page: #f9fafb;
@@ -131,16 +131,17 @@
       gap: 0;
     }
 
-    /* Klarna mounts here; kept off-screen so only the Pay button is visible */
+    /* Klarna widget must stay in DOM with layout; do not use pointer-events: none */
     #klarna-container {
-      position: fixed;
-      left: -9999px;
-      top: 0;
-      width: 400px;
-      min-height: 160px;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
       overflow: hidden;
-      pointer-events: none;
-      opacity: 0;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     .card {
@@ -289,6 +290,12 @@
       font-size: 0.875rem;
     }
 
+    .alert-error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
     @media (max-width: 600px) {
       .top-bar {
         padding: 1rem 1.25rem;
@@ -329,6 +336,7 @@
       </div>
 
       <div id="token-warning" class="alert" style="display: none; margin-bottom: 1.25rem"></div>
+      <div id="klarna-error" class="alert alert-error" style="display: none; margin-bottom: 1.25rem"></div>
 
       <div class="cards">
         <section class="card" aria-labelledby="order-heading">
@@ -359,7 +367,7 @@
           <img class="klarna-logo-img" src="https://upload.wikimedia.org/wikipedia/commons/9/9a/Klarna_Logo_black.svg"
             alt="Klarna" width="108" height="24" />
         </div>
-        <button type="button" class="btn-pay" id="pay-btn" onclick="pay()">Pay now</button>
+        <button type="button" class="btn-pay" id="pay-btn" disabled>Pay now</button>
       </div>
 
       <div id="klarna-container" aria-hidden="true"></div>
@@ -385,6 +393,10 @@
           params.get("productImage") ||
           params.get("image") ||
           "",
+        category:
+          params.get("category") ||
+          params.get("payment_method_category") ||
+          "pay_over_time",
       };
     }
 
@@ -393,13 +405,17 @@
       orderID,
       productName,
       productImage,
+      category: paymentMethodCategory,
     } = getQueryParams();
 
     const productNameEl = document.getElementById("product-name");
     const productImgEl = document.getElementById("product-image");
     const productPlaceholder = document.getElementById("product-placeholder");
     const tokenWarning = document.getElementById("token-warning");
+    const klarnaError = document.getElementById("klarna-error");
     const payBtn = document.getElementById("pay-btn");
+
+    let klarnaReady = false;
 
     productNameEl.textContent = productName;
 
@@ -414,51 +430,120 @@
       };
     }
 
-    if (!clientToken || !orderID) {
-      tokenWarning.style.display = "block";
-      const parts = [];
-      if (!clientToken) {
-        parts.push("add a ?token=… query parameter for the Klarna session");
-      }
-      if (!orderID) {
-        parts.push("add an ?orderID=… query parameter for your order");
-      }
-      tokenWarning.textContent = "Cannot checkout: " + parts.join(" and ") + ".";
+    function showKlarnaError(message) {
+      klarnaError.style.display = "block";
+      klarnaError.textContent = message;
       payBtn.disabled = true;
-    } else {
-      Klarna.Payments.init({
-        client_token: clientToken,
-      });
+      klarnaReady = false;
+    }
 
-      Klarna.Payments.load({
-        container: "#klarna-container",
-        payment_method_category: "pay_over_time",
-      });
+    function initKlarna() {
+      if (!clientToken || !orderID) {
+        tokenWarning.style.display = "block";
+        const parts = [];
+        if (!clientToken) {
+          parts.push("add a ?token=… query parameter for the Klarna session");
+        }
+        if (!orderID) {
+          parts.push("add an ?orderID=… query parameter for your order");
+        }
+        tokenWarning.textContent = "Cannot checkout: " + parts.join(" and ") + ".";
+        payBtn.disabled = true;
+        return;
+      }
+
+      if (typeof Klarna === "undefined" || !Klarna.Payments) {
+        showKlarnaError("Klarna SDK failed to load. Check your network or ad blocker.");
+        return;
+      }
+
+      try {
+        Klarna.Payments.init({
+          client_token: clientToken,
+        });
+      } catch (err) {
+        showKlarnaError("Could not initialize Klarna: " + (err.message || err));
+        return;
+      }
+
+      Klarna.Payments.load(
+        {
+          container: "#klarna-container",
+          payment_method_category: paymentMethodCategory,
+        },
+        function (loadRes) {
+          console.log("[Klarna] load", loadRes);
+
+          if (loadRes && loadRes.error) {
+            showKlarnaError(
+              "Klarna could not load this payment method (" +
+                paymentMethodCategory +
+                "). Try again or contact support."
+            );
+            return;
+          }
+
+          if (loadRes && loadRes.show_form === false) {
+            showKlarnaError(
+              "This order is not eligible for " +
+                paymentMethodCategory +
+                ". Check your Klarna merchant settings."
+            );
+            return;
+          }
+
+          klarnaReady = true;
+          payBtn.disabled = false;
+        }
+      );
     }
 
     function pay() {
-      if (!clientToken) return;
+      if (!clientToken || !orderID || !klarnaReady) {
+        return;
+      }
+
+      payBtn.disabled = true;
+
       Klarna.Payments.authorize(
-  {
-    payment_method_category: "pay_over_time",
-  },
-  {},
-  function (res) {
-    if (res.approved) {
-      const authorizationToken = res.authorization_token;
+        {
+          payment_method_category: paymentMethodCategory,
+        },
+        {},
+        function (res) {
+          console.log("[Klarna] authorize", res);
+          payBtn.disabled = false;
 
-      alert("Payment successful!");
+          if (res && res.approved && res.authorization_token) {
+            window.location.href =
+              "https://seller.coachifyy.de/order=" +
+              encodeURIComponent(orderID) +
+              "&auth=" +
+              encodeURIComponent(res.authorization_token);
+            return;
+          }
 
-      window.location.href =
-        "https://seller.coachifyy.de/order=" +
-        encodeURIComponent(orderID) +
-        "&auth=" +
-        encodeURIComponent(authorizationToken);
-    } else {
-      alert("Payment failed or cancelled");
+          if (res && res.show_form === false) {
+            showKlarnaError("Payment could not be completed. Please try again.");
+            return;
+          }
+
+          if (res && res.error) {
+            showKlarnaError("Payment error: " + (res.error.invalid_fields || res.error.message || "unknown"));
+            return;
+          }
+
+          // User closed the popup or cancelled — no alert needed
+        }
+      );
     }
-  }
-);
+
+    payBtn.addEventListener("click", pay);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initKlarna);
+    } else {
+      initKlarna();
     }
   </script>
 </body>
