@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <script src="https://x.klarnacdn.net/kp/lib/v1/api.js"></script>
   <style>
     :root {
       --bg-page: #f9fafb;
@@ -437,7 +436,7 @@
       klarnaReady = false;
     }
 
-    function initKlarna() {
+    function validateCheckoutParams() {
       if (!clientToken || !orderID) {
         tokenWarning.style.display = "block";
         const parts = [];
@@ -449,11 +448,18 @@
         }
         tokenWarning.textContent = "Cannot checkout: " + parts.join(" and ") + ".";
         payBtn.disabled = true;
+        return false;
+      }
+      return true;
+    }
+
+    function initKlarna() {
+      if (!validateCheckoutParams()) {
         return;
       }
 
       if (typeof Klarna === "undefined" || !Klarna.Payments) {
-        showKlarnaError("Klarna SDK failed to load. Check your network or ad blocker.");
+        showKlarnaError("Klarna Payments SDK failed to load. Check your network or ad blocker.");
         return;
       }
 
@@ -496,6 +502,35 @@
           payBtn.disabled = false;
         }
       );
+    }
+
+    function startKlarnaPayments() {
+      if (!validateCheckoutParams()) {
+        return;
+      }
+
+      window.klarnaAsyncCallback = function () {
+        initKlarna();
+      };
+
+      if (typeof Klarna !== "undefined" && Klarna.Payments) {
+        initKlarna();
+        return;
+      }
+
+      const existing = document.getElementById("klarna-payments-sdk");
+      if (existing) {
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.id = "klarna-payments-sdk";
+      script.src = "https://x.klarnacdn.net/kp/lib/v1/api.js";
+      script.async = true;
+      script.onerror = function () {
+        showKlarnaError("Klarna Payments SDK failed to load. Check your network or ad blocker.");
+      };
+      document.body.appendChild(script);
     }
 
     function pay() {
@@ -541,9 +576,9 @@
     payBtn.addEventListener("click", pay);
 
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initKlarna);
+      document.addEventListener("DOMContentLoaded", startKlarnaPayments);
     } else {
-      initKlarna();
+      startKlarnaPayments();
     }
   </script>
 </body>
