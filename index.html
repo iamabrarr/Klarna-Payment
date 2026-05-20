@@ -439,23 +439,26 @@
     function pay() {
       if (!clientToken) return;
       Klarna.Payments.authorize(
-        {
-          payment_method_category: "pay_over_time",
-        },
-        {},
-        function (res) {
-          if (res.approved) {
-            alert("Payment successful!");
-            window.location.href =
-              "https://seller.coachifyy.de/order=" +
-              encodeURIComponent(orderID) +
-              "/sessionid=" +
-              encodeURIComponent(res.session_id);
-          } else {
-            alert("Payment failed or cancelled");
-          }
-        }
-      );
+  {
+    payment_method_category: "pay_over_time",
+  },
+  {},
+  function (res) {
+    if (res.approved) {
+      const authorizationToken = res.authorization_token;
+
+      alert("Payment successful!");
+
+      window.location.href =
+        "https://seller.coachifyy.de/order=" +
+        encodeURIComponent(orderID) +
+        "&auth=" +
+        encodeURIComponent(authorizationToken);
+    } else {
+      alert("Payment failed or cancelled");
+    }
+  }
+);
     }
   </script>
 </body>
